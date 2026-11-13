@@ -69,7 +69,7 @@ app.get('/api/events', async (req, res) => {
   res.json(events);
 });
 
-// 5. User: Book Tickets & View My Bookings
+// 5. User: Book Tickets, View My Bookings & Cancel Booking
 app.post('/api/bookings', async (req, res) => {
   const { user_id, event_id, seats_booked } = req.body;
   try {
@@ -99,13 +99,28 @@ app.get('/api/bookings/user/:userId', async (req, res) => {
   res.json(rows);
 });
 
-// 6. Organizer: Create Event & View My Events
+app.put('/api/bookings/cancel/:bookingId', async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT * FROM bookings WHERE booking_id = ?', [req.params.bookingId]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Booking not found' });
+    if (rows[0].booking_status === 'cancelled') return res.status(400).json({ error: 'Already cancelled' });
+
+    await db.query("UPDATE bookings SET booking_status = 'cancelled' WHERE booking_id = ?", [req.params.bookingId]);
+    await db.query('UPDATE events SET total_seats = total_seats + ? WHERE event_id = ?', [rows[0].seats_booked, rows[0].event_id]);
+    res.json({ message: 'Booking cancelled and seat refunded!' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 6. Organizer: Create Event, View My Events & View Attendees
 app.post('/api/events', async (req, res) => {
   const { organizer_id, title, description, event_date, venue, ticket_price, total_seats } = req.body;
   try {
+    const formattedDate = event_date ? event_date.replace('T', ' ') + ':00' : null;
     await db.query(
       'INSERT INTO events (organizer_id, title, description, event_date, venue, ticket_price, total_seats) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [organizer_id, title, description, event_date, venue, ticket_price, total_seats]
+      [organizer_id, title, description, formattedDate, venue, ticket_price, total_seats]
     );
     res.status(201).json({ message: 'Event submitted for Admin approval!' });
   } catch (err) {
@@ -115,6 +130,16 @@ app.post('/api/events', async (req, res) => {
 
 app.get('/api/events/organizer/:orgId', async (req, res) => {
   const [rows] = await db.query('SELECT * FROM events WHERE organizer_id = ? ORDER BY created_at DESC', [req.params.orgId]);
+  res.json(rows);
+});
+
+app.get('/api/events/:eventId/attendees', async (req, res) => {
+  const [rows] = await db.query(
+    `SELECT b.booking_id, b.seats_booked, b.total_amount, b.booking_status, u.full_name, u.email
+     FROM bookings b JOIN users u ON b.user_id = u.user_id
+     WHERE b.event_id = ? ORDER BY b.booked_at DESC`,
+    [req.params.eventId]
+  );
   res.json(rows);
 });
 
