@@ -18,3 +18,22 @@ A full-stack web application built with **Node.js**, **Express**, **MySQL**, and
    ```bash
    git clone https://github.com
    cd Online-Event-Management-System
+   
+2.Install dependencies:
+bash
+npm install
+
+3.Create a .env file in the root folder:
+env
+PORT=5000
+DB_HOST=127.0.0.1
+DB_USER=root
+DB_PASSWORD=your_mysql_password
+DB_NAME=event_management
+JWT_SECRET=your_secret_key
+
+4. Create the event_management database and tables (users, events, bookings) in MySQL, then start the server:
+bash
+node server.js
+
+6. Open http://localhost:5000 in your browser.
