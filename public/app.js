@@ -1,4 +1,15 @@
 let currentUser = JSON.parse(localStorage.getItem('user'));
+let allApprovedEvents = [];
+
+function switchAuth(view) {
+  if (view === 'register') {
+    document.getElementById('loginBox').classList.add('hidden');
+    document.getElementById('registerBox').classList.remove('hidden');
+  } else {
+    document.getElementById('registerBox').classList.add('hidden');
+    document.getElementById('loginBox').classList.remove('hidden');
+  }
+}
 
 function showDashboard() {
   document.getElementById('authSection').classList.add('hidden');
@@ -9,6 +20,7 @@ function showDashboard() {
 
   if (!currentUser) {
     document.getElementById('authSection').classList.remove('hidden');
+    switchAuth('login');
     return;
   }
 
@@ -40,6 +52,7 @@ async function register() {
   });
   const data = await res.json();
   alert(data.message || data.error);
+  if (res.ok) switchAuth('login');
 }
 
 async function login() {
@@ -67,17 +80,33 @@ function logout() {
   showDashboard();
 }
 
-async function loadUserDashboard() {
-  const evRes = await fetch('/api/events');
-  const events = await evRes.json();
+function renderApprovedEvents(events) {
   document.getElementById('eventsList').innerHTML = events.map(e => `
     <div class="card">
-      <h3>${e.title} <span class="badge">Rs. ${e.ticket_price}</span></h3>
+      <h3>${e.title} <span class="badge">Rs. ${e.ticket_price} / seat</span></h3>
       <p>${e.description || ''}</p>
       <p><strong>Venue:</strong> ${e.venue} | <strong>Date:</strong> ${new Date(e.event_date).toLocaleString()} | <strong>Seats Left:</strong> ${e.total_seats}</p>
-      <button class="success" onclick="bookTicket(${e.event_id})">Book 1 Ticket</button>
+      <div class="booking-row">
+        <label for="qty-${e.event_id}" style="font-size: 14px; font-weight: bold;">Seats:</label>
+        <input type="number" id="qty-${e.event_id}" value="1" min="1" max="${Math.min(10, e.total_seats)}" />
+        <button class="success" onclick="bookTicket(${e.event_id})">Book Tickets</button>
+      </div>
     </div>
-  `).join('') || '<p>No approved events available yet.</p>';
+  `).join('') || '<p>No matching approved events found.</p>';
+}
+
+function filterEvents() {
+  const query = document.getElementById('eventSearchInput').value.toLowerCase();
+  const filtered = allApprovedEvents.filter(e =>
+    e.title.toLowerCase().includes(query) || e.venue.toLowerCase().includes(query)
+  );
+  renderApprovedEvents(filtered);
+}
+
+async function loadUserDashboard() {
+  const evRes = await fetch('/api/events');
+  allApprovedEvents = await evRes.json();
+  renderApprovedEvents(allApprovedEvents);
 
   const bkRes = await fetch(`/api/bookings/user/${currentUser.user_id}`);
   const bookings = await bkRes.json();
@@ -96,10 +125,11 @@ async function loadUserDashboard() {
 }
 
 async function bookTicket(event_id) {
+  const seats_booked = parseInt(document.getElementById(`qty-${event_id}`).value, 10) || 1;
   const res = await fetch('/api/bookings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: currentUser.user_id, event_id, seats_booked: 1 })
+    body: JSON.stringify({ user_id: currentUser.user_id, event_id, seats_booked })
   });
   const data = await res.json();
   alert(data.message || data.error);
@@ -107,7 +137,7 @@ async function bookTicket(event_id) {
 }
 
 async function cancelBooking(bookingId) {
-  if (!confirm('Cancel this ticket and refund the seat?')) return;
+  if (!confirm('Cancel this ticket and refund the seats?')) return;
   const res = await fetch(`/api/bookings/cancel/${bookingId}`, { method: 'PUT' });
   const data = await res.json();
   alert(data.message || data.error);
@@ -160,7 +190,11 @@ async function loadOrganizerDashboard() {
   document.getElementById('orgEventsList').innerHTML = events.map(e => `
     <div class="card">
       <strong>${e.title}</strong> - <span class="badge">${e.status.toUpperCase()}</span>
-      <p>${e.venue} | Seats Remaining: ${e.total_seats}</p>
+      <p style="margin: 8px 0;">${e.venue} | Seats Remaining: <strong>${e.total_seats}</strong></p>
+      <p style="margin: 8px 0;">
+        Tickets Sold: <strong>${e.tickets_sold}</strong> |
+        <span class="badge revenue">Revenue: Rs. ${e.total_revenue}</span>
+      </p>
       <button onclick="viewAttendees(${e.event_id})" style="width:auto; padding:6px 14px; background:#475569;">View Attendees</button>
       <div id="attendees-${e.event_id}" class="hidden" style="margin-top:10px; padding:10px; background:#fff; border:1px dashed #ccc;"></div>
     </div>
@@ -182,6 +216,15 @@ async function viewAttendees(eventId) {
 }
 
 async function loadAdminDashboard() {
+  const statsRes = await fetch('/api/admin/stats');
+  const stats = await statsRes.json();
+  document.getElementById('adminStats').innerHTML = `
+    <div class="stat-card"><h3>${stats.total_users}</h3><p>Total Users</p></div>
+    <div class="stat-card"><h3>${stats.approved_events}</h3><p>Approved Events</p></div>
+    <div class="stat-card"><h3>${stats.total_tickets}</h3><p>Tickets Sold</p></div>
+    <div class="stat-card"><h3>Rs. ${stats.total_revenue}</h3><p>Total Revenue</p></div>
+  `;
+
   const res = await fetch('/api/admin/pending');
   const data = await res.json();
 
