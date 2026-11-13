@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Online Event Management System</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f6f9; margin: 0; padding: 0; color: #333; }
+    header { background: #1e293b; color: #fff; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; }
+    .container { max-width: 950px; margin: 30px auto; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    h2, h3 { margin-top: 0; color: #1e293b; }
+    input, select, textarea, button { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
+    button { background: #2563eb; color: #fff; border: none; font-weight: bold; cursor: pointer; }
+    button:hover { background: #1d4ed8; }
+    button.danger { background: #dc2626; width: auto; padding: 6px 14px; }
+    button.success { background: #16a34a; width: auto; padding: 6px 14px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; }
+    .card { border: 1px solid #e2e8f0; padding: 15px; border-radius: 6px; margin-bottom: 12px; background: #f8fafc; }
+    .hidden { display: none; }
+    .badge { padding: 3px 8px; border-radius: 4px; font-size: 12px; background: #e0f2fe; color: #0369a1; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div><strong>EventHub</strong> | Online Event Management System</div>
+  <div id="userNav" class="hidden">
+    <span id="welcomeText" style="margin-right: 15px;"></span>
+    <button class="danger" onclick="logout()">Logout</button>
+  </div>
+</header>
+
+<div id="authSection" class="container">
+  <div class="grid">
+    <div>
+      <h2>Login</h2>
+      <input type="email" id="loginEmail" placeholder="Email" />
+      <input type="password" id="loginPassword" placeholder="Password" />
+      <button onclick="login()">Login</button>
+    </div>
+    <div>
+      <h2>Register</h2>
+      <input type="text" id="regName" placeholder="Full Name" />
+      <input type="email" id="regEmail" placeholder="Email" />
+      <input type="password" id="regPassword" placeholder="Password" />
+      <select id="regRole">
+        <option value="user">User (Attendee)</option>
+        <option value="organizer">Event Organizer</option>
+        <option value="admin">Admin</option>
+      </select>
+      <button onclick="register()">Create Account</button>
+    </div>
+  </div>
+</div>
+
+<div id="userSection" class="container hidden">
+  <h2>Available Events</h2>
+  <div id="eventsList"></div>
+  <hr style="margin: 25px 0;" />
+  <h2>My Ticket Bookings</h2>
+  <div id="myBookingsList"></div>
+</div>
+
+<div id="organizerSection" class="container hidden">
+  <div class="grid">
+    <div>
+      <h2>Create New Event</h2>
+      <input type="text" id="evTitle" placeholder="Event Title" />
+      <textarea id="evDesc" placeholder="Event Description"></textarea>
+      <input type="datetime-local" id="evDate" />
+      <input type="text" id="evVenue" placeholder="Venue / Location" />
+      <input type="number" id="evPrice" placeholder="Ticket Price (₹)" />
+      <input type="number" id="evSeats" placeholder="Total Seats" />
+      <button onclick="submitNewEvent()">Submit Event</button>
+    </div>
+    <div>
+      <h2>My Submitted Events</h2>
+      <div id="orgEventsList"></div>
+    </div>
+  </div>
+</div>
+
+<div id="adminSection" class="container hidden">
+  <h2>Pending Organizer Approvals</h2>
+  <div id="pendingOrgs"></div>
+  <hr style="margin: 25px 0;" />
+  <h2>Pending Event Approvals</h2>
+  <div id="pendingEvents"></div>
+</div>
+
+<script>
+  let currentUser = JSON.parse(localStorage.getItem('user'));
+
+  function showDashboard() {
+    document.getElementById('authSection').classList.add('hidden');
+    document.getElementById('userSection').classList.add('hidden');
+    document.getElementById('organizerSection').classList.add('hidden');
+    document.getElementById('adminSection').classList.add('hidden');
+    document.getElementById('userNav').classList.add('hidden');
+
+    if (!currentUser) {
+      document.getElementById('authSection').classList.remove('hidden');
+      return;
+    }
+
+    document.getElementById('userNav').classList.remove('hidden');
+    document.getElementById('welcomeText').innerText = `${currentUser.full_name} (${currentUser.role.toUpperCase()})`;
+
+    if (currentUser.role === 'user') {
+      document.getElementById('userSection').classList.remove('hidden');
+      loadUserDashboard();
+    } else if (currentUser.role === 'organizer') {
+      document.getElementById('organizerSection').classList.remove('hidden');
+      loadOrganizerDashboard();
+    } else if (currentUser.role === 'admin') {
+      document.getElementById('adminSection').classList.remove('hidden');
+      loadAdminDashboard();
+    }
+  }
+
+  async function register() {
+    const res = await fetch('/api/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        full_name: document.getElementById('regName').value,
+        email: document.getElementById('regEmail').value,
+        password: document.getElementById('regPassword').value,
+        role: document.getElementById('regRole').value
+      })
+    });
+    const data = await res.json();
+    alert(data.message || data.error);
+  }
+
+  async function login() {
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: document.getElementById('loginEmail').value,
+        password: document.getElementById('loginPassword').value
+      })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      currentUser = data;
+      localStorage.setItem('user', JSON.stringify(data));
+      showDashboard();
+    } else {
+      alert(data.error);
+    }
+  }
+
+  function logout() {
+    localStorage.removeItem('user');
+    currentUser = null;
+    showDashboard();
+  }
+
+  async function loadUserDashboard() {
+    const evRes = await fetch('/api/events');
+    const events = await evRes.json();
+    document.getElementById('eventsList').innerHTML = events.map(e => `
+      <div class="card">
+        <h3>${e.title} <span class="badge">₹${e.ticket_price}</span></h3>
+        <p>${e.description}</p>
+        <p><strong>Venue:</strong> ${e.venue} | <strong>Date:</strong> ${new Date(e.event_date).toLocaleString()} | <strong>Seats Left:</strong> ${e.total_seats}</p>
+        <button class="success" onclick="bookTicket(${e.event_id})">Book 1 Ticket</button>
+      </div>
+    `).join('') || '<p>No approved events available yet.</p>';
+
+    const bkRes = await fetch(`/api/bookings/user/${currentUser.user_id}`);
+    const bookings = await bkRes.json();
+    document.getElementById('myBookingsList').innerHTML = bookings.map(b => `
+      <div class="card">
+        <strong>${b.title}</strong> — ${b.seats_booked} Seat(s) | Total: ₹${b.total_amount} | Status: <span class="badge">${b.booking_status}</span>
+      </div>
+    `).join('') || '<p>No bookings yet.</p>';
+  }
+
+  async function bookTicket(event_id) {
+    const res = await fetch('/api/bookings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: currentUser.user_id, event_id, seats_booked: 1 })
+    });
+    const data = await res.json();
+    alert(data.message || data.error);
+    loadUserDashboard();
+  }
+
+  async function submitNewEvent() {
+    const res = await fetch('/api/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        organizer_id: currentUser.user_id,
+        title: document.getElementById('evTitle').value,
+        description: document.getElementById('evDesc').value,
+        event_date: document.getElementById('evDate').value,
+        venue: document.getElementById('evVenue').value,
+        ticket_price: document.getElementById('evPrice').value,
+        total_seats: document.getElementById('evSeats').value
+      })
+    });
+    const data = await res.json();
+    alert(data.message || data.error);
+    loadOrganizerDashboard();
+  }
+
+  async function loadOrganizerDashboard() {
+    const res = await fetch(`/api/events/organizer/${currentUser.user_id}`);
+    const events = await res.json();
+    document.getElementById('orgEventsList').innerHTML = events.map(e => `
+      <div class="card">
+        <strong>${e.title}</strong> — <span class="badge">${e.status.toUpperCase()}</span>
+        <p>${e.venue} | Seats Remaining: ${e.total_seats}</p>
+      </div>
+    `).join('') || '<p>No events submitted yet.</p>';
+  }
+
+  async function loadAdminDashboard() {
+    const res = await fetch('/api/admin/pending');
+    const data = await res.json();
+
+    document.getElementById('pendingOrgs').innerHTML = data.organizers.map(o => `
+      <div class="card">
+        <strong>${o.full_name}</strong> (${o.email})
+        <button class="success" onclick="approveOrg(${o.user_id})">Approve Organizer</button>
+      </div>
+    `).join('') || '<p>No pending organizers.</p>';
+
+    document.getElementById('pendingEvents').innerHTML = data.events.map(e => `
+      <div class="card">
+        <strong>${e.title}</strong> by ${e.organizer_name} — ${e.venue}
+        <button class="success" onclick="approveEvent(${e.event_id})">Approve Event</button>
+      </div>
+    `).join('') || '<p>No pending events.</p>';
+  }
+
+  async function approveOrg(id) {
+    await fetch(`/api/admin/approve-organizer/${id}`, { method: 'PUT' });
+    loadAdminDashboard();
+  }
+
+  async function approveEvent(id) {
+    await fetch(`/api/admin/approve-event/${id}`, { method: 'PUT' });
+    loadAdminDashboard();
+  }
+
+  showDashboard();
+</script>
+</body>
+</html>
