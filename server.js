@@ -116,7 +116,7 @@ app.put('/api/bookings/cancel/:bookingId', async (req, res) => {
   }
 });
 
-// 6. Organizer: Create Event, View My Events (With Sales & Revenue) & View Attendees
+// 6. Organizer: Create Event, View My Events, View Attendees & Delete Event
 app.post('/api/events', async (req, res) => {
   const { organizer_id, title, description, event_date, venue, ticket_price, total_seats } = req.body;
   try {
@@ -156,7 +156,16 @@ app.get('/api/events/:eventId/attendees', async (req, res) => {
   res.json(rows);
 });
 
-// 7. Admin: Platform Analytics + Pending Organizers & Events
+app.delete('/api/events/:eventId', async (req, res) => {
+  try {
+    await db.query('DELETE FROM events WHERE event_id = ?', [req.params.eventId]);
+    res.json({ message: 'Event deleted successfully!' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 7. Admin: Platform Analytics, All Users, Approvals & Rejections
 app.get('/api/admin/stats', async (req, res) => {
   try {
     const [[userCount]] = await db.query('SELECT COUNT(*) AS total_users FROM users');
@@ -177,6 +186,11 @@ app.get('/api/admin/stats', async (req, res) => {
   }
 });
 
+app.get('/api/admin/users', async (req, res) => {
+  const [users] = await db.query('SELECT user_id, full_name, email, role, is_approved FROM users ORDER BY created_at DESC');
+  res.json(users);
+});
+
 app.get('/api/admin/pending', async (req, res) => {
   const [organizers] = await db.query("SELECT user_id, full_name, email FROM users WHERE role = 'organizer' AND is_approved = FALSE");
   const [events] = await db.query(
@@ -194,6 +208,11 @@ app.put('/api/admin/approve-organizer/:id', async (req, res) => {
 app.put('/api/admin/approve-event/:id', async (req, res) => {
   await db.query("UPDATE events SET status = 'approved' WHERE event_id = ?", [req.params.id]);
   res.json({ message: 'Event approved!' });
+});
+
+app.put('/api/admin/reject-event/:id', async (req, res) => {
+  await db.query("UPDATE events SET status = 'rejected' WHERE event_id = ?", [req.params.id]);
+  res.json({ message: 'Event rejected!' });
 });
 
 const PORT = process.env.PORT || 5000;
